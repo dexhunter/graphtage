@@ -1,0 +1,43 @@
+[
+  {
+    "upstream_repo": "trailofbits/graphtage",
+    "head_sha": "1f6688d23e75091e7fce340e1bfb6673f23f143c",
+    "file": "graphtage/multiset.py",
+    "function": "_first_with_key",
+    "native_test_cmd": "python3 -m pytest test/test_multiset.py::TestMultiSetEdit -q",
+    "bench_cmd": "python3 osspr-intake/harness/bench_match_keys.py",
+    "baseline_median_ms": 1649.2,
+    "baseline_noise_pct": 14.9,
+    "tests_pass_on_baseline": true,
+    "workload": "Diff two JSON objects of 3200 metric fields (metric.checkout.latency_ms.##### -> int). Every key is shared; every seventh value is incremented by 1. Trees are built with json.build_tree after json.loads, which is the DictNode path with auto_match_keys.",
+    "notes": "On a quiet printer this process is about 1.65s and the diff itself is almost all of that. _match_by_key calls _first_with_key once per field, and _first_with_key walks the whole destination multiset, so 3200 fields do on the order of 10 million leaf comparisons (cProfile: _first_with_key is 4.79s of 5.12s of profiled script time, and the real diff is the process). The walk always returns the first key/value pair in iteration order. A count decremented to zero is left in the counter, so a later pair with the same key is never selected while that first pair is still present. One pass that records the first KeyValuePairNode for each key replaces the scan. Matches, multiplicities, and the diff cost (509) stay the same. Five process times: 1552.2, 1595.1, 1649.2, 1683.0, 1798.6 ms."
+  },
+  {
+    "upstream_repo": "trailofbits/graphtage",
+    "head_sha": "1f6688d23e75091e7fce340e1bfb6673f23f143c",
+    "file": "graphtage/graphtage.py",
+    "function": "print_StringNode",
+    "native_test_cmd": "python3 -m pytest test/test_json.py::TestRenderedDiffs test/test_graphtage.py::TestStringEdit::test_printing_a_string_node_builds_no_lattice -q",
+    "bench_cmd": "python3 osspr-intake/harness/bench_print_strings.py",
+    "baseline_median_ms": 2771.2,
+    "baseline_noise_pct": 13.2,
+    "tests_pass_on_baseline": true,
+    "workload": "Render the JSON diff of a 280-record catalog. Each record has a short name, a ~4500 character description, and a stock count. Every eleventh stock value changes by 1; every description is identical on both sides, so printing takes the unedited print_StringNode path rather than a character lattice. Output is hashed, not written to the terminal.",
+    "notes": "Building and diffing the catalog is ~60ms. Rendering is ~2.3s of a ~2.8s process, and print_StringNode is 4.82s of 5.44s of profiled print time (the per-character work). write_char calls JSONStringFormatter.escape, which runs json.dumps on one character, then Printer.write and CombiningMarkWriter.write. With ansi_color off the combining-mark set is empty, but the writer still rebuilds a one-character string on every call. Joining the escaped characters of an unedited string and writing that once yields the same bytes: for this formatter, concatenating json.dumps(c)[1:-1] equals json.dumps(s)[1:-1]. The rendered length is 1421344 and its sha256 is e0c307812398514d797b9898e484db2b2272987dfbac2cd1ed993ebe68e23058. Five process times: 2692.5, 2768.3, 2771.2, 2805.2, 3058.9 ms."
+  },
+  {
+    "upstream_repo": "trailofbits/graphtage",
+    "head_sha": "1f6688d23e75091e7fce340e1bfb6673f23f143c",
+    "file": "graphtage/batch_distance.py",
+    "function": "preprice",
+    "native_test_cmd": "python3 -m pytest test/test_batch_distance.py::TestPrePricedDiffs test/test_multiset.py::TestMatchingOptimality -q",
+    "metric_kind": "peak_memory_bytes",
+    "baseline_value": 40029389,
+    "baseline_noise_pct": 0.0002,
+    "metric_benchmark": "python3 osspr-intake/harness/peak_mem.py",
+    "labeled_data": null,
+    "tests_pass_on_baseline": true,
+    "workload": "Diff two unordered JSON arrays (ignore_list_order) of 300 distinct ids, alpha-0000..alpha-0299 against beta-0000..beta-0299. No id is shared, so the matcher prices a 300 by 300 rectangle of strings. tracemalloc is started after the trees are built and covers the diff.",
+    "notes": "The traced peak is reached inside preprice and released before it returns: current usage goes from about 6MB to 40MB and back to about 6MB, and the later edit matrix peaks lower, near 18MB. At the first call into _scan the live blocks are several full copies of the 90,000 pairs: preprice's priceable list (batch_distance.py:876, 5.8MB), all_flat's zip list (:606, 5.0MB), NumpyBackend.distances' oriented list (:391, 5.8MB) and selected list (:394, 3.3MB), plus the list _preprice_matching already holds. The distance matrix itself is a few hundred kilobytes and the 256KB scan chunks are not the spike. Pricing the distinct sides as one rectangle, or streaming a single chunk of pairs, keeps the installed cost block identical, so every edit cost stays the same (this diff costs 1200). Five peaks: 40029334, 40029389, 40029389, 40029389, 40029421 bytes. _scan is not the target; it was already changed by dexhunter in PR 218."
+  }
+]
